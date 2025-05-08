@@ -117,7 +117,7 @@ export class Video extends Media {
       // Add iOS compatibility attributes
       if (this.isIOS()) {
         video.playsInline = true;
-        video.muted = true; // Initially mute for autoplay on iOS
+        // Remove forced muting
         video.setAttribute('webkit-playsinline', 'true');
         video.setAttribute('playsinline', 'true');
         video.setAttribute('x5-playsinline', 'true');
