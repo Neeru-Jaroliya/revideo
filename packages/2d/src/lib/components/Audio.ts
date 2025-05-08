@@ -48,17 +48,20 @@ export class Audio extends Media {
       }
      
       Audio.pool[key] = audio;
+
+      // Start loading the audio immediately
+      audio.load();
     }
 
     // Ensure audio is ready before returning
     if (audio.readyState < 1) {
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
-          const onLoadedMetadata = () => {
-            audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+          const onLoadedData = () => {
+            audio.removeEventListener('loadeddata', onLoadedData);
             resolve();
           };
-          audio.addEventListener('loadedmetadata', onLoadedMetadata);
+          audio.addEventListener('loadeddata', onLoadedData);
         }),
       );
     }
@@ -106,7 +109,15 @@ export class Audio extends Media {
         if (this.isIOS()) {
           audio.muted = false;
         }
-        DependencyContext.collectPromise(audio.play());
+        // Try to play and handle any errors
+        DependencyContext.collectPromise(
+          audio.play().catch(error => {
+            console.warn('Audio play failed:', error);
+            // If play fails, try to load and play again
+            audio.load();
+            return audio.play();
+          })
+        );
       }
     } else {
       if (!audio.paused) {
