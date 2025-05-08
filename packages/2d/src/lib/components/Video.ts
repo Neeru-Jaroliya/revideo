@@ -116,7 +116,9 @@ export class Video extends Media {
     if (!video) {
       video = document.createElement('video');
       video.crossOrigin = 'anonymous';
-      video.preload = 'metadata'; // Always preload metadata
+      video.preload = 'metadata';
+      video.volume = 0; // Start with zero volume
+      video.muted = this.volume === 0; // Mute if volume is zero
 
       // Add iOS compatibility attributes
       if (this.isIOS()) {
@@ -138,24 +140,31 @@ export class Video extends Media {
       Video.pool[key] = video;
     }
 
+    // Always update volume and muted state
+    video.volume = this.volume;
+    video.muted = this.volume === 0;
+
     // Ensure video is ready before returning
     if (video.readyState < 1) {
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
           const onLoadedMetadata = () => {
             video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            // Ensure volume settings are maintained
+            video.volume = this.volume;
+            video.muted = this.volume === 0;
             resolve();
           };
           video.addEventListener('loadedmetadata', onLoadedMetadata);
         }),
       );
-   }
-  //New code ends
-  return video;
+    }
+
+    return video;
   }
 
   @computed()
-  protected seekedVideo(): HTMLVideoElement {
+  protected seekedVideo(): HTMLVideoElement { 
     const video = this.video();
     const time = this.clampTime(this.time());
 
@@ -255,6 +264,11 @@ export class Video extends Media {
 
   protected async seekFunction() {
     const playbackState = this.view().playbackState();
+    const video = this.video();
+    
+    // Always ensure volume settings are correct
+    video.volume = this.volume;
+    video.muted = this.volume === 0;
 
     // During playback
     if (
