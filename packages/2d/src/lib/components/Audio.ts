@@ -32,6 +32,8 @@ export class Audio extends Media {
       audio = document.createElement('audio');
       audio.crossOrigin = 'anonymous';
       audio.preload = 'auto';
+      audio.volume = 0; // Start with zero volume
+      audio.muted = this.volume === 0; // Mute if volume is zero
       audio.src = src;
 
       // Add iOS compatibility attributes
@@ -41,9 +43,10 @@ export class Audio extends Media {
         audio.setAttribute('webkit-playsinline', 'true');
         audio.setAttribute('x5-playsinline', 'true');
         
-        // Unmute on first play
+        // Unmute on first play, but respect volume setting
         audio.addEventListener('play', () => {
-          audio.muted = false;
+          audio.muted = this.volume === 0;
+          audio.volume = this.volume;
         }, { once: true }); // Use once to prevent multiple unmutes
       }
      
@@ -53,12 +56,19 @@ export class Audio extends Media {
       audio.load();
     }
 
+    // Always update volume and muted state
+    audio.volume = this.volume;
+    audio.muted = this.volume === 0;
+
     // Ensure audio is ready before returning
     if (audio.readyState < 1) {
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
           const onLoadedData = () => {
             audio.removeEventListener('loadeddata', onLoadedData);
+            // Ensure volume settings are maintained
+            audio.volume = this.volume;
+            audio.muted = this.volume === 0;
             resolve();
           };
           audio.addEventListener('loadeddata', onLoadedData);
@@ -107,7 +117,8 @@ export class Audio extends Media {
     if (playing) {
       if (audio.paused) {
         if (this.isIOS()) {
-          audio.muted = false;
+          audio.muted = this.volume === 0;
+          audio.volume = this.volume;
         }
         // Try to play and handle any errors
         DependencyContext.collectPromise(
@@ -129,6 +140,10 @@ export class Audio extends Media {
     if (Math.abs(audio.currentTime - time) > 0.5) {
       audio.currentTime = time;
     }
+
+    // Always ensure volume settings are correct
+    audio.volume = this.volume;
+    audio.muted = this.volume === 0;
 
     return audio;
   }
