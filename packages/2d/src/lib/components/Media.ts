@@ -113,11 +113,7 @@ export abstract class Media extends Rect {
 
   public getDuration(): number {
     const mElement = this.mediaElement();
-    const isVideo = (mElement instanceof HTMLVideoElement);
-    const isAudio = (mElement instanceof HTMLVideoElement);
-    return (this.isIOS() || (isVideo || isAudio)) ? 2 :  this.mediaElement().duration;    
-    //return 10;
-    // return this.mediaElement().duration;
+    return mElement.duration || 0;
   }
 
   public getVolume(): number {
