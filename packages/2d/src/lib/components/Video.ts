@@ -198,6 +198,10 @@ export class Video extends Media {
       this.playing() && time < video.duration && video.playbackRate > 0;
     if (playing) {
       if (video.paused) {
+        if (this.isIOS()) {
+          video.muted = this.volume === 0;
+          video.volume = this.volume;
+        }
         DependencyContext.collectPromise(video.play());
       }
     } else {
@@ -206,13 +210,14 @@ export class Video extends Media {
       }
     }
 
-    // reseek when video is out of sync by more than one second
-    if (Math.abs(video.currentTime - time) > 1) {
+    // Only seek if we're significantly out of sync (more than 0.5 seconds)
+    if (Math.abs(video.currentTime - time) > 0.5) {
       this.setCurrentTime(time);
     } else if (!playing) {
       video.currentTime = time;
     }
 
+    this.lastTime = time;
     return video;
   }
 
@@ -260,6 +265,29 @@ export class Video extends Media {
     this.lastTime = time;
 
     return frame;
+  }
+
+  protected override setCurrentTime(value: number) {
+    const media = this.mediaElement();
+    if (media.readyState < 2) return;
+
+    // Only update if the time difference is significant
+    if (Math.abs(media.currentTime - value) > 0.1) {
+      media.currentTime = value;
+      this.lastTime = value;
+    }
+
+    if (media.seeking) {
+      DependencyContext.collectPromise(
+        new Promise<void>(resolve => {
+          const listener = () => {
+            resolve();
+            media.removeEventListener('seeked', listener);
+          };
+          media.addEventListener('seeked', listener);
+        }),
+      );
+    }
   }
 
   protected async seekFunction() {
