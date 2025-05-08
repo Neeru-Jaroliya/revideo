@@ -82,13 +82,16 @@ export class Video extends Media {
   protected override desiredSize(): SerializedVector2<DesiredLength> {
     const custom = super.desiredSize();
     if (custom.x === null && custom.y === null) {
-      const image = this.video();
+      const video = this.video();
+      // Wait for video metadata to be loaded
+      if (video.readyState < 1) {
+        return { x: 0, y: 0 };
+      }
       return {
-        x: image.videoWidth,
-        y: image.videoHeight,
+        x: video.videoWidth || 0,
+        y: video.videoHeight || 0,
       };
     }
-
     return custom;
   }
 
@@ -113,18 +116,14 @@ export class Video extends Media {
     if (!video) {
       video = document.createElement('video');
       video.crossOrigin = 'anonymous';
+      video.preload = 'metadata'; // Always preload metadata
 
       // Add iOS compatibility attributes
       if (this.isIOS()) {
         video.playsInline = true;
-        // Remove forced muting
         video.setAttribute('webkit-playsinline', 'true');
         video.setAttribute('playsinline', 'true');
         video.setAttribute('x5-playsinline', 'true');
-
-      // CRITICAL: Add these for iOS duration fix
-      video.preload = 'metadata';
-      video.setAttribute('preload', 'metadata');
       }
 
       const parsedSrc = new URL(src, window.location.origin);
@@ -136,19 +135,18 @@ export class Video extends Media {
         video.src = src;
         video.currentTime = 0;
       }
-        Video.pool[key] = video;
+      Video.pool[key] = video;
     }
 
-    //New code starts
-    const weNeedToWait = this.waitForCanPlayNecessary(video);
-    if (!weNeedToWait) {
-      return video;
-    }
-
-    if (!this.isIOS()) {
+    // Ensure video is ready before returning
+    if (video.readyState < 1) {
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
-          this.waitForCanPlay(video, resolve);
+          const onLoadedMetadata = () => {
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            resolve();
+          };
+          video.addEventListener('loadedmetadata', onLoadedMetadata);
         }),
       );
    }
