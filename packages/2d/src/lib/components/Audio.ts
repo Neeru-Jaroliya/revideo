@@ -31,42 +31,37 @@ export class Audio extends Media {
     if (!audio) {
       audio = document.createElement('audio');
       audio.crossOrigin = 'anonymous';
+      audio.preload = 'auto';
       audio.src = src;
+
       // Add iOS compatibility attributes
       if (this.isIOS()) {
         audio.muted = true; // Initially mute for autoplay on iOS
-
-      // CRITICAL: Add these for iOS duration fix
-      audio.preload = 'metadata';
-      
-      audio.setAttribute('preload', 'metadata');
-      audio.addEventListener('play', () => {
-        audio.muted = false;
-      });
+        audio.setAttribute('playsinline', 'true');
+        audio.setAttribute('webkit-playsinline', 'true');
+        audio.setAttribute('x5-playsinline', 'true');
+        
+        // Unmute on first play
+        audio.addEventListener('play', () => {
+          audio.muted = false;
+        }, { once: true }); // Use once to prevent multiple unmutes
       }
      
       Audio.pool[key] = audio;
     }
-    
 
-    const weNeedToWait = this.waitForCanPlayNecessary(audio);
-    if (!weNeedToWait) {
-      return audio;
-    }
-
-    if (!this.isIOS()) {
+    // Ensure audio is ready before returning
+    if (audio.readyState < 1) {
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
-          this.waitForCanPlay(audio, resolve);
+          const onLoadedMetadata = () => {
+            audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+            resolve();
+          };
+          audio.addEventListener('loadedmetadata', onLoadedMetadata);
         }),
       );
-   }
-
-    // DependencyContext.collectPromise(
-    //   new Promise<void>(resolve => {
-    //     this.waitForCanPlay(audio, resolve);
-    //   }),
-    // );
+    }
 
     return audio;
   }
@@ -91,36 +86,26 @@ export class Audio extends Media {
       audio.pause();
     }
 
-    if (this.lastTime === time) {
-      return audio;
-    }
-
-    this.setCurrentTime(time);
-
+    audio.currentTime = time;
     return audio;
   }
 
   @computed()
   protected fastSeekedAudio(): HTMLAudioElement {
     const audio = this.audio();
-
-    if (!(this.time() < audio.duration)) {
-      this.pause();
-      return audio;
-    }
-
     const time = this.clampTime(this.time());
 
     audio.playbackRate = this.playbackRate();
 
-    if (this.lastTime === time) {
-      return audio;
-    }
-
     const playing =
       this.playing() && time < audio.duration && audio.playbackRate > 0;
+    
+    // Handle play/pause state
     if (playing) {
       if (audio.paused) {
+        if (this.isIOS()) {
+          audio.muted = false;
+        }
         DependencyContext.collectPromise(audio.play());
       }
     } else {
@@ -128,13 +113,21 @@ export class Audio extends Media {
         audio.pause();
       }
     }
-    if (Math.abs(audio.currentTime - time) > 0.3) {
-      this.setCurrentTime(time);
-    } else if (!playing) {
+
+    // Only seek if we're significantly out of sync
+    if (Math.abs(audio.currentTime - time) > 0.5) {
       audio.currentTime = time;
     }
 
     return audio;
+  }
+
+  protected override setCurrentTime(value: number) {
+    const media = this.mediaElement();
+    if (media.readyState < 2) return;
+
+    media.currentTime = value;
+    this.lastTime = value;
   }
 
   protected override async draw(context: CanvasRenderingContext2D) {
